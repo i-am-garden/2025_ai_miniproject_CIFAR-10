@@ -87,3 +87,4 @@ if __name__ == "__main__":
     p.add_argument("--epochs",  default=NUM_EPOCHS, type=int)
     p.add_argument("--batch_size", default=BATCH_TRAIN, type=int)
     args = p.parse_args()
+    main(args)
