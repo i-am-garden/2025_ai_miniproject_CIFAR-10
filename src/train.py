@@ -47,7 +47,7 @@ def evaluate(model, loader, device):
 
 # ─────────────────────────────────────────────────────────
 def main(args):
-    out_dir = Path.home() / "outputs" / args.setting
+    out_dir = OUT_ROOT / args.setting
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # 데이터
