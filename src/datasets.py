@@ -1,4 +1,5 @@
 # src/datasets.py
+from typing import Tuple
 import torch
 import numpy as np
 from torchvision import datasets, transforms
@@ -69,6 +70,33 @@ class NoisyLabelDataset(torch.utils.data.Dataset):
         img, lbl = self.data[idx], int(self.targets[idx])
         return self.transform(img), lbl
 
+class MixupDataset(torch.utils.data.Dataset):
+    """β(α,α) 분포에서 λ를 뽑아 두 샘플을 선형 혼합"""
+
+    def __init__(self, base_set: datasets.CIFAR10, alpha: float = 0.4):
+        self.data = base_set.data
+        self.targets = np.array(base_set.targets)
+        self.transform = base_set.transform
+        self.alpha = alpha
+
+    def __len__(self):
+        return len(self.data)
+
+    def _rand_pair(self, idx):
+        j = np.random.randint(0, len(self.data))
+        return j
+
+    def __getitem__(self, idx) -> Tuple[torch.Tensor, Tuple[int, int, float]]:
+        img1, lbl1 = self.data[idx], int(self.targets[idx])
+        j = self._rand_pair(idx)
+        img2, lbl2 = self.data[j], int(self.targets[j])
+
+        lam = np.random.beta(self.alpha, self.alpha)
+        img1 = self.transform(img1)
+        img2 = self.transform(img2)
+        mixed_img = lam * img1 + (1 - lam) * img2
+        return mixed_img, (lbl1, lbl2, lam)
+
 
 # 강한 이미지 변형(입력 섭동)
 strong_aug = transforms.Compose(
@@ -79,6 +107,7 @@ strong_aug = transforms.Compose(
         transforms.ToTensor(),
     ]
 )
+
 
 
 # ─────────────────────────────────────────────────────────
@@ -103,6 +132,8 @@ def get_loader_by_setting(setting: str, batch_size: int = 128):
     elif setting == "perturb":
         base_train.transform = strong_aug
         train_set = base_train
+    elif setting == "mixup":
+        train_set = MixupDataset(base_train, alpha=0.4)
     else:
         raise ValueError(f"Unknown setting: {setting}")
 

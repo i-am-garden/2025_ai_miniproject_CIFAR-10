@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 
 # ─── 실험 조건 ────────────────────────────────────────────
-SETTINGS = ["baseline", "random_shuffle", "noisy20", "perturb"]
+SETTINGS = ["baseline", "random_shuffle", "noisy20", "perturb", "mixup"]
 
 # ─── 데이터 & 배치 ───────────────────────────────────────
 BATCH_TEST  = 512

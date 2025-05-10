@@ -78,6 +78,7 @@ def main(args):
     torch.save(model.state_dict(), out_dir / "model.pth")
     with open(out_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
+    print(f"✅ model saved to {out_dir / 'model.pth'}")
 
 
 if __name__ == "__main__":
