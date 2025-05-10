@@ -1,0 +1,37 @@
+# ───────── Python 기본 ─────────
+# 컴파일 산출물
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 가상환경
+venv/
+.env/                 # conda env를 폴더로 만들 경우
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 로그·캐시
+*.log
+*.pickle
+*.joblib
+.cache/
+.cache/**
+
+# ───────── IDE 관련 ─────────
+.vscode/
+.idea/
+
+# macOS / Windows 특수 파일
+.DS_Store
+Thumbs.db
+
+# ───────── 프로젝트 특화 ─────────
+# 학습 결과물 (모델, 체크포인트)
+*.pth
+*.pt
+*.ckpt
+
+# 대용량 데이터셋
+data/
+datasets/
