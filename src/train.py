@@ -58,16 +58,15 @@ def main(args):
         _, test_loader = get_baseline_loaders(args.batch_size)
 
     # 모델
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = SimpleCNN().to(device)
+    model = SimpleCNN().to(DEVICE)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     history = {"train_acc": [], "test_acc": []}
     for epoch in range(1, args.epochs + 1):
-        _, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        te_acc = evaluate(model, test_loader, device)
+        _, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer, DEVICE)
+        te_acc = evaluate(model, test_loader, DEVICE)
         history["train_acc"].append(tr_acc)
         history["test_acc"].append(te_acc)
         print(
