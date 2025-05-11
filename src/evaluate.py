@@ -152,6 +152,19 @@ def main():
 
     print("✓ All plots saved to", OUT_ROOT.resolve())
 
+# ────── (5) Per-class Accuracy Trend ───────────────────────
+    # 각 setting 별로 accuracy를 비교하는 그래프
+    plt.figure(figsize=(10,4))
+    sns.pointplot(data=df, x='index', y='accuracy',
+                hue='setting', dodge=0.4,
+                markers='o', linestyles='-')
+    plt.xticks(rotation=45); plt.ylim(0,1)
+    plt.ylabel('Accuracy'); plt.xlabel('Class')
+    plt.title('Per-class Accuracy (Trend)')
+    plt.tight_layout()
+    plt.savefig(OUT_ROOT / "per_class_accuracy_trend.png", dpi=150)
+    plt.close()
+    print("✓ All plots saved to", OUT_ROOT.resolve())
 
 if __name__ == "__main__":
     main()
