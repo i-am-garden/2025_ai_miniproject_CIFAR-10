@@ -27,7 +27,7 @@ from settings import (SETTINGS, BATCH_TEST as BATCH,
 @torch.no_grad()
 def get_test_loader():
     tf = transforms.ToTensor()
-    test_set = datasets.CIFAR10(ROOT / "data", train=False,
+    test_set = datasets.CIFAR10(DATA_DIR, train=False,
                                 download=True, transform=tf)
     return torch.utils.data.DataLoader(
         test_set, batch_size=BATCH, shuffle=False, num_workers=2
