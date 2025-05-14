@@ -108,7 +108,33 @@ strong_aug = transforms.Compose(
     ]
 )
 
+blur_aug = transforms.Compose(
+    [
+        transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
+        transforms.GaussianBlur(kernel_size=3),
+        transforms.ToTensor(),
+    ]
+)
 
+color_aug = transforms.Compose(
+    [
+        transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
+        transforms.ColorJitter(0.9, 0.9, 0.9, 0.3),
+        transforms.ToTensor(),
+    ]
+)
+
+# datasets.py (맨 위 import 근처에 추가해도 되고 파일 아래쪽에 둬도 됩니다)
+rotation_aug = transforms.Compose([
+    transforms.RandomRotation(
+        degrees=180,                     # (-180°, +180°) 범위
+        interpolation=transforms.InterpolationMode.BILINEAR,
+        expand=False,                   # True로 두면 모서리 잘림 방지 대신 padding 생김
+        fill=0                          # 잘린 영역은 검정(=0)으로 채움
+    ),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+])
 
 # ─────────────────────────────────────────────────────────
 # 3) 설정 이름 → DataLoader 매핑 함수 ─────────────────────
@@ -134,6 +160,15 @@ def get_loader_by_setting(setting: str, batch_size: int = 128):
         train_set = base_train
     elif setting == "mixup":
         train_set = MixupDataset(base_train, alpha=0.4)
+    elif setting == "rotate30":
+        base_train.transform = rotation_aug
+        train_set = base_train
+    elif setting == "blur":
+        base_train.transform = blur_aug
+        train_set = base_train
+    elif setting == "color":
+        base_train.transform = color_aug
+        train_set = base_train
     else:
         raise ValueError(f"Unknown setting: {setting}")
 
