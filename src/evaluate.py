@@ -6,6 +6,7 @@
 3) Δ-Accuracy Heatmap (setting × class)
 4) Confusion Matrix 각 setting
 5) Aggregated Mis-classification Δ-Heatmap
+6) Top-k Error 막대그래프
 """
 
 from pathlib import Path
@@ -115,6 +116,7 @@ def main():
     sns.barplot(x=names, y=[meta[k]['acc3'] for k in names],
                 hue=names, legend=False, palette="crest")
     plt.ylim(0,1); plt.ylabel("Top-3 Acc"); plt.title("Top-3 Accuracy")
+    plt.xticks(rotation=45, ha='right')  # x축 라벨 45도 기울이기
     plt.tight_layout(); plt.savefig(OUT_ROOT/"acc_top3.png", dpi=150); plt.close()
 
     # ---------- (3) Δ-Accuracy Heatmap -------------------
@@ -162,12 +164,14 @@ def main():
     sns.barplot(x=names, y=[meta[k]['err1'] for k in names],
                 hue=names, legend=False, palette="rocket")
     plt.ylim(0,1); plt.ylabel("Top-1 Error"); plt.title("Top-1 Error")
+    plt.xticks(rotation=45, ha='right')  # x축 라벨 45도 기울이기
     plt.tight_layout(); plt.savefig(OUT_ROOT/"err_top1.png", dpi=150); plt.close()
 
     plt.figure(figsize=(6,4))
     sns.barplot(x=names, y=[meta[k]['err3'] for k in names],
                 hue=names, legend=False, palette="mako_r")
     plt.ylim(0,1); plt.ylabel("Top-3 Error"); plt.title("Top-3 Error")
+    plt.xticks(rotation=45, ha='right')  # x축 라벨 45도 기울이기
     plt.tight_layout(); plt.savefig(OUT_ROOT/"err_top3.png", dpi=150); plt.close()
 
     # ---------- JSON 저장 --------------------------------

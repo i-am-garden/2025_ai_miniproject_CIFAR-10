@@ -100,44 +100,41 @@ class MixupDataset(torch.utils.data.Dataset):
         mixed_img = lam * img1 + (1 - lam) * img2
         return mixed_img, (lbl1, lbl2, lam)
 
-
 # 강한 이미지 변형(입력 섭동)
-strong_aug = transforms.Compose(
-    [
-        transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
-        transforms.GaussianBlur(kernel_size=3),
-        transforms.ColorJitter(0.9, 0.9, 0.9, 0.3),
-        transforms.ToTensor(),
-    ]
-)
+strong_aug = transforms.Compose([
+    transforms.ToPILImage(),                       # ★ 추가 ★
+    transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
+    transforms.GaussianBlur(kernel_size=3),
+    transforms.ColorJitter(0.9, 0.9, 0.9, 0.3),
+    transforms.ToTensor(),
+])
 
-blur_aug = transforms.Compose(
-    [
-        transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
-        transforms.GaussianBlur(kernel_size=3),
-        transforms.ToTensor(),
-    ]
-)
+color_aug = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
+    transforms.ColorJitter(0.9, 0.9, 0.9, 0.3),
+    transforms.ToTensor(),
+])
 
-color_aug = transforms.Compose(
-    [
-        transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
-        transforms.ColorJitter(0.9, 0.9, 0.9, 0.3),
-        transforms.ToTensor(),
-    ]
-)
+blur_aug = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
+    transforms.GaussianBlur(kernel_size=3),
+    transforms.ToTensor(),
+])
 
-# datasets.py (맨 위 import 근처에 추가해도 되고 파일 아래쪽에 둬도 됩니다)
 rotation_aug = transforms.Compose([
+    transforms.ToPILImage(),
     transforms.RandomRotation(
-        degrees=180,                     # (-180°, +180°) 범위
+        degrees=180,
         interpolation=transforms.InterpolationMode.BILINEAR,
-        expand=False,                   # True로 두면 모서리 잘림 방지 대신 padding 생김
-        fill=0                          # 잘린 영역은 검정(=0)으로 채움
+        expand=False,
+        fill=0
     ),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
 ])
+
 
 # ─────────────────────────────────────────────────────────
 # 3) 설정 이름 → DataLoader 매핑 함수 ─────────────────────

@@ -119,7 +119,9 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     # 어떤 루프를 쓸지 결정
-    is_mix = args.setting in {"mixup", "cutmix"}
+    is_mix = args.setting in {"mixup", "cutmix", "noisy20_mixup",
+                             "blur_mixup", "color_mixup", "perturb_mixup",
+                             "rotaterandom_mixup"}
     train_fn = train_one_epoch_mix if is_mix else train_one_epoch
 
     history = {"train_acc": [], "test_acc": []}
