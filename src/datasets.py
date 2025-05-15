@@ -72,6 +72,9 @@ class NoisyLabelDataset(torch.utils.data.Dataset):
 
 class MixupDataset(torch.utils.data.Dataset):
     """β(α,α) 분포에서 λ를 뽑아 두 샘플을 선형 혼합"""
+    #lambda값은 0~1사이의 값으로 두 샘플을 섞는 비율을 나타냄
+    #α값이 클수록 λ는 0.5에 가까워지고, α값이 작을수록 λ는 0.0 또는 1.0에 가까워짐
+    #구체적인 수식은 λ = np.random.beta(α, α)로 표현됨
 
     def __init__(self, base_set: datasets.CIFAR10, alpha: float = 0.4):
         self.data = base_set.data
@@ -160,7 +163,7 @@ def get_loader_by_setting(setting: str, batch_size: int = 128):
         train_set = base_train
     elif setting == "mixup":
         train_set = MixupDataset(base_train, alpha=0.4)
-    elif setting == "rotate30":
+    elif setting == "rotaterandom":
         base_train.transform = rotation_aug
         train_set = base_train
     elif setting == "blur":
@@ -169,6 +172,38 @@ def get_loader_by_setting(setting: str, batch_size: int = 128):
     elif setting == "color":
         base_train.transform = color_aug
         train_set = base_train
+    elif setting == "noisy20_mixup":
+        train_set = MixupDataset(
+            NoisyLabelDataset(base_train, noise_ratio=0.2), alpha=0.4
+        )
+    elif setting == "blur_mixup":
+        train_set = MixupDataset(
+            datasets.CIFAR10(
+                "../data", train=True, download=True, transform=blur_aug
+            ),
+            alpha=0.4,
+        )
+    elif setting == "color_mixup":
+        train_set = MixupDataset(
+            datasets.CIFAR10(
+                "../data", train=True, download=True, transform=color_aug
+            ),
+            alpha=0.4,
+        )
+    elif setting == "perturb_mixup":
+        train_set = MixupDataset(
+            datasets.CIFAR10(
+                "../data", train=True, download=True, transform=strong_aug
+            ),
+            alpha=0.4,
+        )
+    elif setting == "rotaterandom_mixup":
+        train_set = MixupDataset(
+            datasets.CIFAR10(
+                "../data", train=True, download=True, transform=rotation_aug
+            ),
+            alpha=0.4,
+        )
     else:
         raise ValueError(f"Unknown setting: {setting}")
 

@@ -1,37 +1,41 @@
 # src/evaluate.py
 """
-네 가지 setting(baseline, random_shuffle, noisy20, perturb)의
-저장된 모델을 공통 Test set에 대해 평가하고, 다음 시각화 생성:
-1) 전체 Test accuracy 막대그래프
-2) 설정별 Confusion Matrix
-3) Per-class Accuracy Violin plot
-4) t-SNE Scatter (Baseline vs Noisy20 비교용)
+평가/시각화
+1) Top-1 Accuracy 막대그래프
+2) Top-3 Accuracy 막대그래프
+3) Δ-Accuracy Heatmap (setting × class)
+4) Confusion Matrix 각 setting
+5) Aggregated Mis-classification Δ-Heatmap
 """
 
 from pathlib import Path
 import json
 import random
-
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
+import pandas as pd
 import torch
 from sklearn.metrics import confusion_matrix
-from sklearn.manifold import TSNE
 from torchvision import datasets, transforms
 
 from model import SimpleCNN
 from settings import (SETTINGS, BATCH_TEST as BATCH,
                       DEVICE, OUT_ROOT, DATA_DIR, CLASS_NAMES)
-# ───────── DataLoader ─────────────────────────────────────
+
+# ───────── 헬퍼 ───────────────────────────────────────────
 @torch.no_grad()
 def get_test_loader():
     tf = transforms.ToTensor()
-    test_set = datasets.CIFAR10(DATA_DIR, train=False,
-                                download=True, transform=tf)
-    return torch.utils.data.DataLoader(
-        test_set, batch_size=BATCH, shuffle=False, num_workers=2
-    ), test_set
+    test = datasets.CIFAR10(DATA_DIR, train=False,
+                            download=True, transform=tf)
+    loader = torch.utils.data.DataLoader(test, batch_size=BATCH,
+                                         shuffle=False, num_workers=2)
+    return loader
+
+def accuracy_topk(logits, targets, k=3):
+    topk = logits.topk(k, 1, True, True)[1]       # (B,k)
+    return topk.eq(targets.view(-1, 1).expand_as(topk)).any(1)
 
 # ───────── 모델 평가 ──────────────────────────────────────
 @torch.no_grad()
@@ -40,131 +44,136 @@ def eval_model(weight_path, loader):
     model.load_state_dict(torch.load(weight_path, map_location=DEVICE))
     model.eval()
 
-    total, correct = 0, 0
-    all_true, all_pred = [], []
-    feats = []                       # t-SNE용 feature 저장
+    tot = hit1 = hit3 = 0
+    cls_tot  = np.zeros(10, int)
+    cls_hit1 = np.zeros(10, int)
+
+    y_true_all, y_pred_all = [], []
+
     for x, y in loader:
         x, y = x.to(DEVICE), y.to(DEVICE)
         logits = model(x)
-        _, pred = logits.max(1)
 
-        # feature: GAP 직전 벡터 (B,128)
-        f = model.features(x).view(x.size(0), -1).cpu()
-        feats.append(f)
+        pred1   = logits.argmax(1)
+        top3_ok = accuracy_topk(logits, y, k=3)
 
-        total += y.size(0)
-        correct += pred.eq(y).sum().item()
-        all_true.extend(y.cpu().numpy())
-        all_pred.extend(pred.cpu().numpy())
+        # 전체
+        tot  += y.size(0)
+        hit1 += pred1.eq(y).sum().item()
+        hit3 += top3_ok.sum().item()
 
-    accuracy = correct / total
-    cm = confusion_matrix(all_true, all_pred)
-    feats = torch.cat(feats, dim=0)       # (N_test, 128)
-    return accuracy, cm, feats.numpy(), np.array(all_true)
+        # per-class
+        for c in range(10):
+            mask = (y == c)
+            if mask.any():
+                cls_tot[c]  += mask.sum().item()
+                cls_hit1[c] += pred1[mask].eq(c).sum().item()
 
-# ───────── 메인 루프 ──────────────────────────────────────
+        y_true_all.extend(y.cpu().numpy())
+        y_pred_all.extend(pred1.cpu().numpy())
+
+    acc1 = hit1 / tot
+    acc3 = hit3 / tot
+
+    per_cls_acc1 = cls_hit1 / cls_tot         # (10,)
+    cm = confusion_matrix(y_true_all, y_pred_all)
+
+    return acc1, acc3, per_cls_acc1, cm
+
+# ───────── 메인 ───────────────────────────────────────────
 def main():
-    test_loader, test_set = get_test_loader()
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    loader = get_test_loader()
 
-    acc_dict, cm_dict, feat_dict, label_arr = {}, {}, {}, None
+    meta, cm_dict = {}, {}
     for s in SETTINGS:
-        weight = OUT_ROOT / s / "model.pth"
-        if not weight.exists():
+        w = OUT_ROOT / s / "model.pth"
+        if not w.exists():
             print(f"[skip] {s:15s}  (model file not found)")
             continue
-        acc, cm, feats, y_true = eval_model(weight, test_loader)
-        acc_dict[s], cm_dict[s], feat_dict[s] = acc, cm, feats
-        label_arr = y_true                    # 동일하므로 한 번만 저장
-        print(f"[{s:15s}] accuracy = {acc:.4f}")
+        acc1, acc3, per_cls, cm = eval_model(w, loader)
+        err1, err3 = 1-acc1, 1-acc3
+        meta[s]          = dict(acc1=float(acc1),
+                                acc3=float(acc3),
+                                err1=float(err1),
+                                err3=float(err3),
+                                per_cls=per_cls.tolist())
+        cm_dict[s] = cm
+        print(f"[{s:15s}]  top1={acc1:.4f}  top3={acc3:.4f}  "
+              f"err1={err1:.4f}  err3={err3:.4f}")
 
-    # ── (1) Accuracy bar ─────────────────────────────────
-    plt.figure(figsize=(6, 4))
-    names = list(acc_dict.keys())
-    vals = [acc_dict[k] for k in names]
-    sns.barplot(x=names, y=vals, palette="deep")
-    plt.ylim(0, 1)
-    plt.ylabel("Test Accuracy")
-    plt.title("CIFAR-10 Accuracy by Setting")
-    plt.tight_layout()
-    plt.savefig(OUT_ROOT / "accuracy_by_setting.png", dpi=150)
-    plt.close()
+    names = list(meta.keys())
+    # ---------- (1) Top-1 Accuracy bar -------------------
+    plt.figure(figsize=(6,4))
+    sns.barplot(x=names, y=[meta[k]['acc1'] for k in names],
+                hue=names, legend=False, palette="deep")
+    plt.ylim(0,1); plt.ylabel("Top-1 Acc"); plt.title("Top-1 Accuracy")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"acc_top1.png", dpi=150); plt.close()
 
-    # ── (2) Confusion Matrices ───────────────────────────
+    # ---------- (2) Top-3 Accuracy bar -------------------
+    plt.figure(figsize=(6,4))
+    sns.barplot(x=names, y=[meta[k]['acc3'] for k in names],
+                hue=names, legend=False, palette="crest")
+    plt.ylim(0,1); plt.ylabel("Top-3 Acc"); plt.title("Top-3 Accuracy")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"acc_top3.png", dpi=150); plt.close()
+
+    # ---------- (3) Δ-Accuracy Heatmap -------------------
+    base = np.asarray(meta["baseline"]["per_cls"])
+    delta_rows, ylbl = [], []
+    for s in names:
+        if s=="baseline": continue
+        delta_rows.append(np.asarray(meta[s]["per_cls"]) - base)
+        ylbl.append(s)
+    delta_mat = np.vstack(delta_rows) if delta_rows else np.empty((0,10))
+    plt.figure(figsize=(10,1.5+0.4*len(ylbl)))
+    sns.heatmap(delta_mat, cmap="RdBu_r", center=0, annot=True, fmt=".2f",
+                xticklabels=CLASS_NAMES, yticklabels=ylbl)
+    plt.title("Δ Accuracy (setting – baseline)")
+    plt.xlabel("Class"); plt.ylabel("Setting")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"delta_acc_heatmap.png", dpi=150); plt.close()
+
+    # ---------- (4) Confusion Matrices -------------------
     for s, cm in cm_dict.items():
-        plt.figure(figsize=(7, 6))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=True,
+        plt.figure(figsize=(7,6))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                     xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES)
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
         plt.title(f"Confusion Matrix – {s}")
-        plt.tight_layout()
-        plt.savefig(OUT_ROOT / f"cm_{s}.png", dpi=150)
-        plt.close()
+        plt.xlabel("Pred"); plt.ylabel("True")
+        plt.tight_layout(); plt.savefig(OUT_ROOT/f"cm_{s}.png", dpi=150); plt.close()
 
-    # ── (3) Per-class Accuracy Violin ────────────────────
-    per_cls = {s: cm.diagonal() / cm.sum(1) for s, cm in cm_dict.items()}
-    # DataFrame 형태로 변환 (class × setting)
-    import pandas as pd
-    df = pd.DataFrame(per_cls, index=CLASS_NAMES).reset_index().melt(
-        id_vars="index", var_name="setting", value_name="accuracy"
-    )
-    plt.figure(figsize=(8, 4))
-    sns.violinplot(x="index", y="accuracy", hue="setting",
-                   data=df, split=True, inner="quart", palette="muted")
-    plt.xticks(rotation=45)
-    plt.ylabel("Per-class Accuracy")
-    plt.xlabel("Class")
-    plt.title("Per-class Accuracy Distribution")
-    plt.legend(loc="upper right")
-    plt.tight_layout()
-    plt.savefig(OUT_ROOT / "per_class_accuracy_violin.png", dpi=150)
-    plt.close()
+    # ---------- (5) Aggregated Mis-Δ Heatmap -------------
+    base_cm = cm_dict["baseline"].astype(int)
+    mis_delta = np.zeros_like(base_cm)
+    for s, cm in cm_dict.items():
+        if s=="baseline": continue
+        diff = cm.astype(int) - base_cm
+        diff[np.diag_indices_from(diff)] = 0      # diagonal 제거
+        mis_delta += diff
+    plt.figure(figsize=(7,6))
+    sns.heatmap(mis_delta, mask=(mis_delta==0), cmap="RdBu_r", center=0,
+                annot=True, fmt="+d",
+                xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES,
+                cbar_kws=dict(label="Δ count (aggregated)"))
+    plt.title("Aggregated Mis-classification Δ  (all settings vs baseline)")
+    plt.xlabel("Predicted"); plt.ylabel("True")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"mis_delta_heatmap.png", dpi=150); plt.close()
+    # (6) Top-k Error bar ---------------------------------
+    plt.figure(figsize=(6,4))
+    sns.barplot(x=names, y=[meta[k]['err1'] for k in names],
+                hue=names, legend=False, palette="rocket")
+    plt.ylim(0,1); plt.ylabel("Top-1 Error"); plt.title("Top-1 Error")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"err_top1.png", dpi=150); plt.close()
 
-    # ── (4) t-SNE (Baseline vs Noisy20) ───────────────────
-    if "baseline" in feat_dict and "noisy20" in feat_dict:
-        # 2000개 샘플만 랜덤 추출 → 시각 복잡도 줄임
-        idx = random.sample(range(len(label_arr)), k=2000)
-        feats_base = feat_dict["baseline"][idx]
-        feats_noisy = feat_dict["noisy20"][idx]
-        labels_sub = label_arr[idx]
+    plt.figure(figsize=(6,4))
+    sns.barplot(x=names, y=[meta[k]['err3'] for k in names],
+                hue=names, legend=False, palette="mako_r")
+    plt.ylim(0,1); plt.ylabel("Top-3 Error"); plt.title("Top-3 Error")
+    plt.tight_layout(); plt.savefig(OUT_ROOT/"err_top3.png", dpi=150); plt.close()
 
-        X = np.vstack([feats_base, feats_noisy])
-        y = np.hstack([labels_sub, labels_sub])
-        domain = np.array([0] * len(idx) + [1] * len(idx))  # 0=base,1=noisy
-
-        tsne = TSNE(n_components=2, perplexity=30, random_state=42)
-        emb = tsne.fit_transform(X)
-
-        plt.figure(figsize=(6, 5))
-        # 점 색상: 클래스 / 모양: 도메인
-        for cls in range(10):
-            for d, marker in zip([0, 1], ['o', 's']):
-                mask = (y == cls) & (domain == d)
-                plt.scatter(emb[mask, 0], emb[mask, 1],
-                            s=14, alpha=0.6,
-                            label=f"{CLASS_NAMES[cls]} – {'base' if d==0 else 'noisy'}",
-                            marker=marker)
-        plt.legend(fontsize=6, ncol=2, bbox_to_anchor=(1.05, 1))
-        plt.title("t-SNE of Penultimate Features\n(Baseline vs Noisy20)")
-        plt.tight_layout()
-        plt.savefig(OUT_ROOT / "tsne_base_vs_noisy20.png", dpi=150)
-        plt.close()
-
-    print("✓ All plots saved to", OUT_ROOT.resolve())
-
-# ────── (5) Per-class Accuracy Trend ───────────────────────
-    # 각 setting 별로 accuracy를 비교하는 그래프
-    plt.figure(figsize=(10,4))
-    sns.pointplot(data=df, x='index', y='accuracy',
-                hue='setting', dodge=0.4,
-                markers='o', linestyles='-')
-    plt.xticks(rotation=45); plt.ylim(0,1)
-    plt.ylabel('Accuracy'); plt.xlabel('Class')
-    plt.title('Per-class Accuracy (Trend)')
-    plt.tight_layout()
-    plt.savefig(OUT_ROOT / "per_class_accuracy_trend.png", dpi=150)
-    plt.close()
-    print("✓ All plots saved to", OUT_ROOT.resolve())
+    # ---------- JSON 저장 --------------------------------
+    with open(OUT_ROOT/"metrics_topk.json","w") as fp:
+        json.dump(meta, fp, indent=2)
+    print("✓ plots & metrics saved to", OUT_ROOT.resolve())
 
 if __name__ == "__main__":
     main()
